@@ -55,7 +55,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         "model": model_name,
                         "chunk": output,
                         "done": True
-                    })
+           git          })
                     await asyncio.sleep(0.1)
 
                 # 3. Get consensus and merged response
