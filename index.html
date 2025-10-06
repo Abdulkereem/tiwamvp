@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TIWA Conversation Engine Test</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #chat { width: 80%; max-width: 800px; border: 1px solid #ccc; padding: 20px; }
+        #messages { margin-bottom: 20px; }
+        .message { margin-bottom: 10px; }
+        .user-message { text-align: right; }
+        .model-response { margin-top: 10px; padding: 10px; border: 1px solid #eee; border-radius: 5px; }
+        .final-response { background-color: #e6ffed; }
+        #prompt-input { width: 100%; padding: 10px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>TIWA Conversation Engine Test</h1>
+    <div id="chat">
+        <div id="messages"></div>
+        <input type="text" id="prompt-input" placeholder="Enter your prompt...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        const clientId = "test-client-" + Math.random().toString(36).substring(7);
+        const websocket = new WebSocket(`ws://localhost:3000/ws/${clientId}`);
+
+        websocket.onopen = () => {
+            console.log("WebSocket connection established.");
+        };
+
+        websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const messagesDiv = document.getElementById("messages");
+
+            if (data.type === "partial") {
+                let modelDiv = document.getElementById(data.model);
+                if (!modelDiv) {
+                    modelDiv = document.createElement("div");
+                    modelDiv.id = data.model;
+                    modelDiv.className = "model-response";
+                    messagesDiv.appendChild(modelDiv);
+                }
+                modelDiv.innerHTML = `<strong>${data.model}:</strong> ${data.chunk}`;
+            }
+
+            if (data.type === "final") {
+                const finalDiv = document.createElement("div");
+                finalDiv.className = "model-response final-response";
+                finalDiv.innerHTML = `
+                    <strong>Final Response:</strong> ${data.final_output}<br>
+                    <strong>Confidence:</strong> ${data.confidence}<br>
+                    <strong>Sources:</strong> ${data.sources.join(", ")}
+                `;
+                messagesDiv.appendChild(finalDiv);
+            }
+        };
+
+        function sendMessage() {
+            const input = document.getElementById("prompt-input");
+            const prompt = input.value;
+            if (prompt) {
+                const messagesDiv = document.getElementById("messages");
+                const userMessageDiv = document.createElement("div");
+                userMessageDiv.className = "message user-message";
+                userMessageDiv.innerText = prompt;
+                messagesDiv.appendChild(userMessageDiv);
+
+                websocket.send(JSON.stringify({
+                    action: "message",
+                    prompt: prompt
+                }));
+                input.value = "";
+            }
+        }
+    </script>
+</body>
+</html>
