@@ -5,8 +5,8 @@ from fastapi.responses import FileResponse
 from typing import Dict
 
 # Import from our modules
-from chat_memory import create_chat_session, add_message_to_session, chat_sessions
-from models import call_gpt, call_claude, call_deepseek
+from chat_memory import create_chat_session, add_message_to_session, chat_sessions, get_chat_session
+from models import call_gpt, call_deepseek
 from consensus import verify_and_merge
 
 app = FastAPI()
@@ -29,51 +29,58 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             prompt = data.get("prompt")
 
             if action == "message" and prompt:
+                # Chain of thought and TIWA persona logic
+                session = get_chat_session(chat_id)
                 add_message_to_session(chat_id, "user", prompt)
 
-                # 1. Run models concurrently
-                gpt_task = asyncio.create_task(call_gpt(prompt))
-                claude_task = asyncio.create_task(call_claude(prompt))
-                deepseek_task = asyncio.create_task(call_deepseek(prompt))
-
-                gpt_result, claude_result, deepseek_result = await asyncio.gather(
-                    gpt_task,
-                    claude_task,
-                    deepseek_task
-                )
-
-                model_outputs = {
-                    "gpt": gpt_result,
-                    "claude": claude_result,
-                    "deepseek": deepseek_result
-                }
-
-                # 2. Stream partial results to the client
-                for model_name, output in model_outputs.items():
+                # Check if user is asking about TIWA's identity
+                if any(x in prompt.lower() for x in ["who are you", "what is tiwa", "your name", "are you tiwa", "who is tiwa"]):
+                    tiwa_identity = (
+                        "I am TIWA, a Task Intelligent Web Agent built by Hive Innovation Lab, "
+                        "based on GPT-4 and Deepseek large language models."
+                    )
+                    add_message_to_session(chat_id, "assistant", tiwa_identity, reasoning="TIWA persona response")
+                    print(f"TIWA Persona: {tiwa_identity}")
                     await websocket.send_json({
-                        "type": "partial",
-                        "model": model_name,
-                        "chunk": output,
-                        "done": True
-           git          })
-                    await asyncio.sleep(0.1)
+                        "type": "final",
+                        "chat_id": chat_id,
+                        "final_source": tiwa_identity
+                    })
+                    continue
 
-                # 3. Get consensus and merged response
-                final_data = verify_and_merge(
-                    outputs={"gpt": gpt_result, "claude": claude_result},
-                    evidence=[deepseek_result] # The evidence should be a list of strings
-                )
+                # Run both agents and get their outputs
+                gpt_task = asyncio.create_task(call_gpt(prompt))
+                deepseek_task = asyncio.create_task(call_deepseek(prompt))
+                gpt_result, deepseek_result = await asyncio.gather(gpt_task, deepseek_task)
 
-                final_data["per_model"]["deepseek"] = deepseek_result
+                # Consensus logic: if outputs are similar, use either; if not, use Gemini to arbitrate
+                def are_similar(a, b):
+                    return a.strip().lower()[:50] == b.strip().lower()[:50]
 
-                # 4. Store assistant response in memory
-                add_message_to_session(chat_id, "assistant", final_data["final_output"])
+                if are_similar(gpt_result, deepseek_result):
+                    final_source = gpt_result
+                    consensus_method = "agreement"
+                else:
+                    from models import call_gemini_judge
+                    final_source = await call_gemini_judge(gpt_result, deepseek_result, prompt)
+                    consensus_method = "gemini_judge"
 
-                # 5. Send final merged response
+                from consensus import compute_confidence
+                confidence = compute_confidence(["gpt", "deepseek"], [deepseek_result])
+
+                # Log all details in backend
+                print(f"GPT: {gpt_result}\nDeepseek: {deepseek_result}\nConfidence: {confidence}\nFinal Source: {final_source}\nConsensus method: {consensus_method}")
+
+                # Store agent outputs and reasoning in chain of thought
+                add_message_to_session(chat_id, "assistant", gpt_result, reasoning="GPT output")
+                add_message_to_session(chat_id, "assistant", deepseek_result, reasoning="Deepseek output")
+                add_message_to_session(chat_id, "assistant", final_source, reasoning=f"Final source output ({consensus_method})")
+
+                # Send only the final source to the frontend
                 await websocket.send_json({
                     "type": "final",
                     "chat_id": chat_id,
-                    **final_data
+                    "final_source": final_source
                 })
 
     except WebSocketDisconnect:
