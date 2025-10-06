@@ -1,3 +1,3 @@
 #!/bin/sh
 source .venv/bin/activate
-python server.py --port 3000
+python3.9 server.py --port 3000

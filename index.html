@@ -25,6 +25,7 @@
 
     <script>
         const clientId = "test-client-" + Math.random().toString(36).substring(7);
+
         const websocket = new WebSocket(`ws://localhost:3000/ws/${clientId}`);
 
         websocket.onopen = () => {
@@ -35,26 +36,11 @@
             const data = JSON.parse(event.data);
             const messagesDiv = document.getElementById("messages");
 
-            if (data.type === "partial") {
-                let modelDiv = document.getElementById(data.model);
-                if (!modelDiv) {
-                    modelDiv = document.createElement("div");
-                    modelDiv.id = data.model;
-                    modelDiv.className = "model-response";
-                    messagesDiv.appendChild(modelDiv);
-                }
-                modelDiv.innerHTML = `<strong>${data.model}:</strong> ${data.chunk}`;
-            }
-
             if (data.type === "final") {
-                const finalDiv = document.createElement("div");
-                finalDiv.className = "model-response final-response";
-                finalDiv.innerHTML = `
-                    <strong>Final Response:</strong> ${data.final_output}<br>
-                    <strong>Confidence:</strong> ${data.confidence}<br>
-                    <strong>Sources:</strong> ${data.sources.join(", ")}
-                `;
-                messagesDiv.appendChild(finalDiv);
+                const threadDiv = document.createElement("div");
+                threadDiv.className = "model-response final-response";
+                threadDiv.innerHTML = `<div><strong>Response:</strong> ${data.final_source}</div>`;
+                messagesDiv.appendChild(threadDiv);
             }
         };
 
