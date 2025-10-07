@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from typing import Dict
 
 # Import from our modules
-from chat_memory import create_chat_session, add_message_to_session, chat_sessions, get_chat_session
+from chat_memory import create_chat_session, add_message_to_session, get_chat_session
 from models import call_gpt, call_deepseek
 from consensus import verify_and_merge
 
@@ -53,34 +53,31 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 deepseek_task = asyncio.create_task(call_deepseek(prompt))
                 gpt_result, deepseek_result = await asyncio.gather(gpt_task, deepseek_task)
 
-                # Consensus logic: if outputs are similar, use either; if not, use Gemini to arbitrate
-                def are_similar(a, b):
-                    return a.strip().lower()[:50] == b.strip().lower()[:50]
+                model_outputs = {
+                    "gpt": gpt_result,
+                    "deepseek": deepseek_result
+                }
 
-                if are_similar(gpt_result, deepseek_result):
-                    final_source = gpt_result
-                    consensus_method = "agreement"
-                else:
-                    from models import call_gemini_judge
-                    final_source = await call_gemini_judge(gpt_result, deepseek_result, prompt)
-                    consensus_method = "gemini_judge"
-
-                from consensus import compute_confidence
-                confidence = compute_confidence(["gpt", "deepseek"], [deepseek_result])
+                # Get consensus and merged response
+                final_data = await verify_and_merge(
+                    outputs=model_outputs,
+                    evidence=[deepseek_result],
+                    prompt=prompt
+                )
 
                 # Log all details in backend
-                print(f"GPT: {gpt_result}\nDeepseek: {deepseek_result}\nConfidence: {confidence}\nFinal Source: {final_source}\nConsensus method: {consensus_method}")
+                print(f"GPT: {gpt_result}\nDeepseek: {deepseek_result}\nConfidence: {final_data['confidence']}\nFinal Source: {final_data['final_output']}\nConsensus method: {final_data['consensus_method']}")
 
                 # Store agent outputs and reasoning in chain of thought
                 add_message_to_session(chat_id, "assistant", gpt_result, reasoning="GPT output")
                 add_message_to_session(chat_id, "assistant", deepseek_result, reasoning="Deepseek output")
-                add_message_to_session(chat_id, "assistant", final_source, reasoning=f"Final source output ({consensus_method})")
+                add_message_to_session(chat_id, "assistant", final_data['final_output'], reasoning=f"Final source output ({final_data['consensus_method']})")
 
                 # Send only the final source to the frontend
                 await websocket.send_json({
                     "type": "final",
                     "chat_id": chat_id,
-                    "final_source": final_source
+                    "final_source": final_data['final_output']
                 })
 
     except WebSocketDisconnect:
