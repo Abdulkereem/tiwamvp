@@ -7,9 +7,9 @@ from typing import Dict
 
 # Import from our modules
 from chat_memory import create_chat_session, add_message_to_session, get_formatted_history
-from models import call_gpt, call_deepseek
+from models import call_gpt, call_deepseek, tool_decider_model
 from consensus import verify_and_merge
-from tools import tavily_web_search, scrape_url # New tools imported
+from tools import tavily_web_search, scrape_url
 
 app = FastAPI()
 
@@ -36,8 +36,14 @@ def generate_topic(prompt: str) -> str:
         topic += "..."
     return topic
 
+# --- Available Tools ---
+AVAILABLE_TOOLS = {
+    "tavily_web_search": tavily_web_search,
+    "scrape_url": scrape_url,
+}
+
 async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str, prompt_id: str):
-    """Handles prompts by checking for identity, then tools, then multi-model consensus."""
+    """Handles prompts dynamically, using a tool-decider model first."""
     try:
         # Step 1: Identity Check (Highest Priority)
         if is_identity_question(prompt):
@@ -47,50 +53,65 @@ async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str,
             await websocket.send_json({"type": "final", "prompt_id": prompt_id, "final_source": TIWA_PERSONA})
             return
 
-        # Add user message to history early for context
         add_message_to_session(chat_id, "user", prompt)
         topic = generate_topic(prompt)
         await websocket.send_json({"type": "thinking", "topic": topic, "prompt_id": prompt_id})
 
-        # Step 2: Tool Use Check (Second Priority)
-        search_match = re.match(r"^(?:search for|web search|look up|tavily search)\s+(.+)", prompt, re.IGNORECASE)
-        scrape_match = re.match(r"^(?:read|scrape|get content of)\s+(https?://[^\s]+)", prompt, re.IGNORECASE)
-        
-        tool_result = None
-        tool_used = None
-
-        if search_match:
-            query = search_match.group(1)
-            print(f"Prompt ID {prompt_id}: Identified as search command. Query: '{query}'", flush=True)
-            tool_used, tool_result = "Web Search", await tavily_web_search(query)
-        elif scrape_match:
-            url = scrape_match.group(1)
-            print(f"Prompt ID {prompt_id}: Identified as scrape command. URL: {url}", flush=True)
-            tool_used, tool_result = "URL Scraper", await scrape_url(url)
-
-        if tool_result:
-            print(f"Prompt ID {prompt_id}: Tool '{tool_used}' executed.", flush=True)
-            add_message_to_session(chat_id, "assistant", tool_result, reasoning=f"Direct result from {tool_used}")
-            await websocket.send_json({"type": "final", "prompt_id": prompt_id, "final_source": tool_result})
-            return
-
-        # Step 3: Multi-Model Consensus (Default Flow)
         history = get_formatted_history(chat_id)
         contextual_prompt = f"{history}\nUser's current question: {prompt}"
 
-        gpt_task = asyncio.create_task(call_gpt(contextual_prompt))
-        deepseek_task = asyncio.create_task(call_deepseek(contextual_prompt))
-        gpt_result, deepseek_result = await asyncio.gather(gpt_task, deepseek_task)
+        # Step 2: Tool Use Decision with Correct Error Handling
+        function_call = None
+        tool_executed = False
 
-        model_outputs = {"gpt": gpt_result, "deepseek": deepseek_result}
-        final_data = await verify_and_merge(outputs=model_outputs, evidence=[deepseek_result], prompt=contextual_prompt)
+        if tool_decider_model:
+            decision_response = await asyncio.to_thread(tool_decider_model.generate_content, contextual_prompt)
+            
+            try:
+                # This is the correct, idiomatic way to check.
+                # .text raises ValueError if a function call is present.
+                _ = decision_response.text
+                print(f"Prompt ID {prompt_id}: AI decided not to use a tool.", flush=True)
 
-        add_message_to_session(chat_id, "assistant", final_data['final_output'], reasoning=f"Final output after {final_data.get('consensus_method')}")
-        await websocket.send_json({"type": "final", "prompt_id": prompt_id, "final_source": final_data['final_output']})
+            except ValueError:
+                # This block is executed ONLY when a function call is likely present.
+                print(f"Prompt ID {prompt_id}: AI response not simple text, parsing for tool call.", flush=True)
+                try:
+                    function_call = decision_response.candidates[0].content.parts[0].function_call
+                except Exception as e:
+                     print(f"Prompt ID {prompt_id}: Could not parse function call from response: {e}", flush=True)
+
+        if function_call:
+            tool_name = function_call.name
+            if tool_name in AVAILABLE_TOOLS:
+                tool_args = {key: value for key, value in function_call.args.items()}
+                print(f"Prompt ID {prompt_id}: AI executing tool: {tool_name} with args: {tool_args}", flush=True)
+                
+                tool_function = AVAILABLE_TOOLS[tool_name]
+                tool_result = await tool_function(**tool_args)
+                
+                print(f"Prompt ID {prompt_id}: Tool '{tool_name}' executed.", flush=True)
+                add_message_to_session(chat_id, "assistant", tool_result, reasoning=f"Direct result from {tool_name}")
+                await websocket.send_json({"type": "final", "prompt_id": prompt_id, "final_source": tool_result})
+                tool_executed = True
+
+        if not tool_executed:
+            # Step 3: Multi-Model Consensus (If no tool is used)
+            print(f"Prompt ID {prompt_id}: No tool used. Proceeding with consensus.", flush=True)
+            gpt_task = asyncio.create_task(call_gpt(contextual_prompt))
+            deepseek_task = asyncio.create_task(call_deepseek(contextual_prompt))
+            gpt_result, deepseek_result = await asyncio.gather(gpt_task, deepseek_task)
+
+            model_outputs = {"gpt": gpt_result, "deepseek": deepseek_result}
+            final_data = await verify_and_merge(outputs=model_outputs, evidence=[deepseek_result], prompt=contextual_prompt)
+
+            add_message_to_session(chat_id, "assistant", final_data['final_output'], reasoning=f"Final output after {final_data.get('consensus_method')}")
+            await websocket.send_json({"type": "final", "prompt_id": prompt_id, "final_source": final_data['final_output']})
 
     except Exception as e:
         print(f"Error processing prompt_id {prompt_id}: {e}", flush=True)
         await websocket.send_json({"type": "error", "prompt_id": prompt_id, "message": "An error occurred."})
+
 
 @app.get("/")
 async def get():
@@ -113,6 +134,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         print(f"Client {client_id} disconnected.")
     except Exception as e:
         print(f"Websocket error for client {client_id}: {e}", flush=True)
+
 
 if __name__ == "__main__":
     import uvicorn

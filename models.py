@@ -4,6 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 import openai
 import google.generativeai as genai
+from google.generativeai.types import FunctionDeclaration, Tool
 
 load_dotenv()
 
@@ -25,12 +26,59 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+# --- Tool Definitions for Gemini ---
+
+tavily_web_search_tool = FunctionDeclaration(
+    name="tavily_web_search",
+    description="Searches the web for information using the Tavily API. Use for questions about current events, facts, or things you don't know.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query to use."
+            }
+        },
+        "required": ["query"]
+    }
+)
+
+scrape_url_tool = FunctionDeclaration(
+    name="scrape_url",
+    description="Fetches and scrapes the text content from a given URL. Use when a user provides a URL and asks to read, check, summarize, or get its content.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "The URL to scrape."
+            }
+        },
+        "required": ["url"]
+    }
+)
+
+# --- AI Model Instances ---
+
+# 1. Tool Decider Model (Gemini)
+# This model's primary job is to decide if a tool should be used.
+tool_decider_model = genai.GenerativeModel(
+    'gemini-1.5-flash-latest',
+    tools=[tavily_web_search_tool, scrape_url_tool]
+) if GEMINI_API_KEY else None
+
+
+# 2. Judge Model (Gemini)
+# This model arbitrates between other models in the consensus phase.
+judge_model = genai.GenerativeModel('gemini-1.5-flash-latest') if GEMINI_API_KEY else None
+
+
 # --- TIWA Persona for Judge ---
 TIWA_JUDGE_PROMPT = (
     "You are a helpful assistant acting as a judge. Your goal is to ensure the final answer is accurate and embodies the persona of TIWA. "
     "TIWA (Task Intelligent Web Agent) is a multi-model AI assistant created by Hive Innovation Lab. "
     "Hive Innovation Lab was co-founded by best buddies Abdulkereem O Kereem and Akinola Solmipe. Abdulkereem is the core engineer of TIWA. "
-    "TIWA's intelligence comes from models like GPT and Deepseek. "
+    "TIWA\'s intelligence comes from models like GPT and Deepseek. "
     "When asked about its identity, TIWA must use this exact persona. "
     "Review the following outputs. If they are similar and correct, return the best one. If they disagree or are incorrect, synthesize a new, accurate response that adheres to the TIWA persona. "
     "Respond only with the final, chosen answer."
@@ -66,20 +114,18 @@ async def call_deepseek(prompt: str):
 
 async def call_gemini_judge(gpt_output: str, deepseek_output: str, prompt: str) -> str:
     """Uses Gemini to arbitrate between GPT and Deepseek outputs."""
-    if not GEMINI_API_KEY:
-        return "Gemini API key not set."
+    if not judge_model:
+        return "Gemini API key not set or model failed to initialize."
 
     try:
-        judge_prompt = (
+        judge_prompt_full = (
             f"{TIWA_JUDGE_PROMPT}\n\n"
             f"The user asked: '{prompt}'\n"
             f"GPT says: '{gpt_output}'\n"
             f"Deepseek says: '{deepseek_output}'"
         )
-
-        model = genai.GenerativeModel('gemini-pro')
-        response = await asyncio.to_thread(model.generate_content, judge_prompt)
+        response = await asyncio.to_thread(judge_model.generate_content, judge_prompt_full)
         return response.text.strip()
     except Exception as e:
         print(f"Error calling Gemini Judge API: {e}", flush=True)
-        return gpt_output
+        return gpt_output # Fallback to GPT's output on error
