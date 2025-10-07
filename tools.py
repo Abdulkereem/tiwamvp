@@ -12,16 +12,14 @@ except KeyError:
     tavily_client = None
 
 async def tavily_web_search(query: str) -> str:
-    """Performs a web search using Tavily and returns a summarized result."""
+    """Performs a web search using Tavily and returns the raw results."""
     if not tavily_client:
         return "Error: Tavily API key not configured."
     try:
         print(f"Performing Tavily search for: {query}", flush=True)
+        # Return the raw search results for the model to process
         response = tavily_client.search(query=query, search_depth="advanced")
-        # We will return a concise summary of the top 3 results
-        results = [f"- {res['title']}: {res['content']}" for res in response['results'][:3]]
-        summary = "\n".join(results)
-        return f"Here are the top web search results for '{query}':\n{summary}"
+        return str(response["results"])
     except Exception as e:
         return f"Error during web search: {e}"
 
