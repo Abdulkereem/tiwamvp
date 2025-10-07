@@ -1,8 +1,10 @@
 import os
 import httpx
 import json
+import uuid
 from bs4 import BeautifulSoup
 from tavily import TavilyClient
+import openai
 
 # It's crucial to set your Tavily API key in your .env file
 # TAVILY_API_KEY="Your Tavily API key"
@@ -11,6 +13,10 @@ try:
 except KeyError:
     print("Warning: TAVILY_API_KEY not found in environment variables. Web search will not work.", flush=True)
     tavily_client = None
+
+# Configure OpenAI client for image generation
+openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 async def tavily_web_search(query: str) -> str:
     """Performs a web search using Tavily and returns the results as a JSON string."""
@@ -52,3 +58,45 @@ async def scrape_url(url: str) -> str:
         return f"Error fetching URL {url}: {e.response.status_code} {e.response.reason_phrase}"
     except Exception as e:
         return f"An error occurred while scraping {url}: {e}"
+
+
+async def generate_image(prompt: str) -> str:
+    """Generates an image using DALL-E 3 and saves it locally."""
+    if not openai_client.api_key:
+        return "Error: OpenAI API key not configured."
+
+    static_dir = "static"
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+
+    try:
+        print(f"Generating image with prompt: {prompt}", flush=True)
+        response = await openai_client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        
+        image_url = response.data[0].url
+        if not image_url:
+            return "Error: Could not get image URL from OpenAI."
+
+        # Download the image
+        async with httpx.AsyncClient() as client:
+            image_response = await client.get(image_url)
+            image_response.raise_for_status()
+
+        # Save the image
+        filename = f"{uuid.uuid4()}.png"
+        filepath = os.path.join(static_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(image_response.content)
+
+        # Return the local path, which is also a URL path
+        return f"/{filepath}"
+
+    except Exception as e:
+        print(f"Error generating image: {e}", flush=True)
+        return f"Error: An error occurred during image generation: {e}"

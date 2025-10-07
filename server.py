@@ -3,15 +3,20 @@ import uuid
 import re
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from typing import Dict
 
 # Import from our modules
 from chat_memory import create_chat_session, add_message_to_session, get_formatted_history
 from models import call_gpt, call_deepseek, tool_decider_model
 from consensus import verify_and_merge
-from tools import tavily_web_search, scrape_url
+from tools import tavily_web_search, scrape_url, generate_image
 
 app = FastAPI()
+
+# Mount the static directory to serve images
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # --- Core Identity & Business Logic ---
 
@@ -45,6 +50,7 @@ def generate_topic(prompt: str) -> str:
 AVAILABLE_TOOLS = {
     "tavily_web_search": tavily_web_search,
     "scrape_url": scrape_url,
+    "generate_image": generate_image,
 }
 
 async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str, prompt_id: str):

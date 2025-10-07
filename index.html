@@ -46,21 +46,16 @@
             padding: 15px;
             margin-bottom: 10px;
         }
-        .search-result-card h3 {
-            margin: 0 0 8px 0;
-        }
-        .search-result-card a {
-            color: #8ab4f8;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .search-result-card a:hover {
-            text-decoration: underline;
-        }
-        .search-result-card p {
-            margin: 5px 0 0 0;
-            color: #c0c5ce;
-            font-size: 0.9em;
+        .search-result-card h3 { margin: 0 0 8px 0; }
+        .search-result-card a { color: #8ab4f8; text-decoration: none; font-weight: 500; }
+        .search-result-card a:hover { text-decoration: underline; }
+        .search-result-card p { margin: 5px 0 0 0; color: #c0c5ce; font-size: 0.9em; }
+
+        /* Style for Generated Images */
+        .generated-image {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
         }
 
     </style>
@@ -107,28 +102,38 @@
                 responseDiv.className = "model-response final-response";
                 responseDiv.innerHTML = `<div><strong>TIWA:</strong></div>`;
 
-                // Try to parse the source as JSON for search results
-                try {
-                    const results = JSON.parse(data.final_source);
-                    if (Array.isArray(results)) {
-                        const resultsContainer = document.createElement("div");
-                        resultsContainer.className = "search-results-container";
-                        results.forEach(res => {
-                            const card = document.createElement("div");
-                            card.className = "search-result-card";
-                            card.innerHTML = `
-                                <h3><a href="${res.url}" target="_blank">${res.title}</a></h3>
-                                <p>${res.content}</p>
-                            `;
-                            resultsContainer.appendChild(card);
-                        });
-                        responseDiv.appendChild(resultsContainer);
-                    } else {
-                       throw new Error("Parsed data is not an array");
+                const source = data.final_source;
+
+                // Check if the source is an image path
+                if (source.startsWith('/') && source.endsWith('.png')) {
+                    const imageElement = document.createElement("img");
+                    imageElement.src = source;
+                    imageElement.className = "generated-image";
+                    responseDiv.appendChild(imageElement);
+                } else {
+                    // Try to parse the source as JSON for search results
+                    try {
+                        const results = JSON.parse(source);
+                        if (Array.isArray(results)) {
+                            const resultsContainer = document.createElement("div");
+                            resultsContainer.className = "search-results-container";
+                            results.forEach(res => {
+                                const card = document.createElement("div");
+                                card.className = "search-result-card";
+                                card.innerHTML = `
+                                    <h3><a href="${res.url}" target="_blank">${res.title}</a></h3>
+                                    <p>${res.content}</p>
+                                `;
+                                resultsContainer.appendChild(card);
+                            });
+                            responseDiv.appendChild(resultsContainer);
+                        } else {
+                           throw new Error("Parsed data is not an array");
+                        }
+                    } catch (e) {
+                        // If it's not JSON or an image, treat it as Markdown
+                        responseDiv.innerHTML += marked.parse(source);
                     }
-                } catch (e) {
-                    // If it's not valid JSON, treat it as Markdown
-                    responseDiv.innerHTML += marked.parse(data.final_source);
                 }
                 
                 const container = document.querySelector(`[data-prompt-id="${data.prompt_id}"]`);

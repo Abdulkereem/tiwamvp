@@ -58,19 +58,35 @@ scrape_url_tool = FunctionDeclaration(
     }
 )
 
+generate_image_tool = FunctionDeclaration(
+    name="generate_image",
+    description="Creates an image from a text description. Use this when the user asks to draw, create, or generate an image.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "description": "A detailed description of the image to be generated."
+            }
+        },
+        "required": ["prompt"]
+    }
+)
+
+
 # --- AI Model Instances ---
 
 # 1. Tool Decider Model (Gemini)
 # This model's primary job is to decide if a tool should be used.
 tool_decider_model = genai.GenerativeModel(
-    'gemini-flash-latest', # As requested by the user
-    tools=[tavily_web_search_tool, scrape_url_tool]
+    'gemini-flash-latest',
+    tools=[tavily_web_search_tool, scrape_url_tool, generate_image_tool]
 ) if GEMINI_API_KEY else None
 
 
 # 2. Judge Model (Gemini)
 # This model arbitrates between other models in the consensus phase.
-judge_model = genai.GenerativeModel('gemini-flash-latest') if GEMINI_API_KEY else None # As requested by the user
+judge_model = genai.GenerativeModel('gemini-flash-latest') if GEMINI_API_KEY else None
 
 
 # --- TIWA Persona for Judge ---
