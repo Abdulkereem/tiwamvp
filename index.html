@@ -3,62 +3,202 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TIWA Conversation Engine Test</title>
+    <title>TIWA Conversation Engine</title>
+    
+    <!-- highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- marked.js for Markdown to HTML conversion -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
-        #chat { width: 80%; max-width: 800px; border: 1px solid #ccc; padding: 20px; }
-        #messages { margin-bottom: 20px; }
-        .message { margin-bottom: 10px; }
-        .user-message { text-align: right; }
-        .model-response { margin-top: 10px; padding: 10px; border: 1px solid #eee; border-radius: 5px; }
-        .final-response { background-color: #e6ffed; }
-        #prompt-input { width: 100%; padding: 10px; margin-bottom: 10px; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            background-color: #1a1a1a; /* Dark background */
+            color: #e0e0e0; /* Light text */
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { 
+            color: #00aaff; /* A vibrant blue for the title */
+            font-weight: 500;
+        }
+        #chat { 
+            width: 90%; 
+            max-width: 800px; 
+            border: 1px solid #333;
+            padding: 20px; 
+            background-color: #242424; /* Slightly lighter dark for chat area */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            border-radius: 10px; 
+        }
+        #messages { 
+            margin-bottom: 20px; 
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .message { margin-bottom: 15px; }
+        .user-message { 
+            text-align: right; 
+            color: #7aa2f7; /* A pleasant blue for user messages */
+            font-weight: 500;
+        }
+        .model-response, .thinking-message { 
+            margin-top: 10px; 
+            padding: 15px; 
+            border: 1px solid #333;
+            border-radius: 8px; 
+            line-height: 1.6;
+        }
+        .final-response { 
+            background-color: #2a2d3d; /* A subtle blueish-gray for responses */
+            border-color: #444;
+        }
+        .thinking-message { 
+            background-color: #333; 
+            color: #aaa; 
+            display: flex; 
+            align-items: center; 
+        }
+        #prompt-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background-color: #333;
+            color: #e0e0e0;
+            font-size: 1em;
+        }
+        #prompt-container { display: flex; gap: 10px; }
+        button { 
+            padding: 12px 20px; 
+            border: none; 
+            background-color: #007bff; 
+            color: white; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            transition: background-color 0.3s; 
+        }
+        button:hover { background-color: #0056b3; }
+        .loader { 
+            border: 4px solid #555; 
+            border-top: 4px solid #00aaff; 
+            border-radius: 50%; 
+            width: 20px; 
+            height: 20px; 
+            animation: spin 1s linear infinite; 
+            margin-right: 12px; 
+        }
+
+        /* Styles for Markdown content */
+        .final-response h1, .final-response h2, .final-response h3 {
+            color: #00aaff;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        .final-response p { margin: 10px 0; }
+        .final-response code:not(.hljs) {
+            background-color: #333;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: "Fira Code", monospace;
+        }
+        .final-response pre code.hljs {
+            display: block;
+            overflow-x: auto;
+            padding: 1em;
+            background: #2d2d2d;
+            border-radius: 8px;
+        }
+        .final-response ul, .final-response ol {
+            padding-left: 20px;
+        }
+        .final-response blockquote {
+            border-left: 4px solid #555;
+            padding-left: 15px;
+            margin-left: 0;
+            color: #aaa;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <h1>TIWA Conversation Engine Test</h1>
+    <h1>TIWA Conversation Engine</h1>
     <div id="chat">
         <div id="messages"></div>
-        <input type="text" id="prompt-input" placeholder="Enter your prompt...">
-        <button onclick="sendMessage()">Send</button>
+        <div id="prompt-container">
+            <input type="text" id="prompt-input" placeholder="Ask TIWA..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Send</button>
+        </div>
     </div>
 
     <script>
-        const clientId = "test-client-" + Math.random().toString(36).substring(7);
+        const clientId = "web-client-" + Math.random().toString(36).substring(2, 9);
+        const websocket = new WebSocket(`ws://${window.location.host}/ws/${clientId}`);
+        const messagesDiv = document.getElementById("messages");
+        const input = document.getElementById("prompt-input");
 
-        const websocket = new WebSocket(`ws://localhost:3000/ws/${clientId}`);
+        // Configure marked to use highlight.js for code blocks
+        marked.setOptions({
+          renderer: new marked.Renderer(),
+          highlight: function(code, lang) {
+            const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+            return hljs.highlight(code, { language }).value;
+          },
+          gfm: true,
+          breaks: true
+        });
 
-        websocket.onopen = () => {
-            console.log("WebSocket connection established.");
-        };
+        websocket.onopen = () => console.log("WebSocket connection established.");
 
         websocket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            const messagesDiv = document.getElementById("messages");
+            let thinkingDiv = document.getElementById("thinking");
 
-            if (data.type === "final") {
-                const threadDiv = document.createElement("div");
-                threadDiv.className = "model-response final-response";
-                threadDiv.innerHTML = `<div><strong>Response:</strong> ${data.final_source}</div>`;
-                messagesDiv.appendChild(threadDiv);
+            if (data.type === "thinking") {
+                if (!thinkingDiv) {
+                    thinkingDiv = document.createElement("div");
+                    thinkingDiv.id = "thinking";
+                    thinkingDiv.className = "thinking-message";
+                    thinkingDiv.innerHTML = `<div class="loader"></div><div>Thinking about: <strong>${data.topic}</strong></div>`;
+                    messagesDiv.appendChild(thinkingDiv);
+                }
+            } else if (data.type === "final") {
+                if (thinkingDiv) {
+                    thinkingDiv.remove();
+                }
+                const responseDiv = document.createElement("div");
+                responseDiv.className = "model-response final-response";
+                
+                // Use marked to convert Markdown to HTML
+                responseDiv.innerHTML = `<div><strong>TIWA:</strong></div>${marked.parse(data.final_source)}`;
+                messagesDiv.appendChild(responseDiv);
             }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to the latest message
         };
 
         function sendMessage() {
-            const input = document.getElementById("prompt-input");
-            const prompt = input.value;
+            const prompt = input.value.trim();
             if (prompt) {
-                const messagesDiv = document.getElementById("messages");
                 const userMessageDiv = document.createElement("div");
                 userMessageDiv.className = "message user-message";
                 userMessageDiv.innerText = prompt;
                 messagesDiv.appendChild(userMessageDiv);
 
-                websocket.send(JSON.stringify({
-                    action: "message",
-                    prompt: prompt
-                }));
+                websocket.send(JSON.stringify({ action: "message", prompt }));
                 input.value = "";
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === "Enter") {
+                sendMessage();
             }
         }
     </script>

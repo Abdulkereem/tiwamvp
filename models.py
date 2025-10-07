@@ -25,6 +25,18 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+# --- TIWA Persona for Judge ---
+TIWA_JUDGE_PROMPT = (
+    "You are a helpful assistant acting as a judge. Your goal is to ensure the final answer is accurate and embodies the persona of TIWA. "
+    "TIWA (Task Intelligent Web Agent) is a multi-model AI assistant created by Hive Innovation Lab. "
+    "Hive Innovation Lab was co-founded by best buddies Abdulkereem O Kereem and Akinola Solmipe. Abdulkereem is the core engineer of TIWA. "
+    "TIWA's intelligence comes from models like GPT and Deepseek. "
+    "When asked about its identity, TIWA must use this exact persona. "
+    "Review the following outputs. If they are similar and correct, return the best one. If they disagree or are incorrect, synthesize a new, accurate response that adheres to the TIWA persona. "
+    "Respond only with the final, chosen answer."
+)
+
+
 # --- Model Calling Functions ---
 
 async def call_gpt(prompt: str):
@@ -59,19 +71,15 @@ async def call_gemini_judge(gpt_output: str, deepseek_output: str, prompt: str) 
 
     try:
         judge_prompt = (
-            f"You are TIWA, a Task Intelligent Web Agent. The user asked: '{prompt}'.\n"
-            f"GPT-4 says: '{gpt_output}'\n"
-            f"Deepseek says: '{deepseek_output}'\n"
-            "If the answers are similar, return the best one. If they disagree, choose the most accurate and trustworthy answer, or synthesize a consensus. Respond only with the chosen answer."
+            f"{TIWA_JUDGE_PROMPT}\n\n"
+            f"The user asked: '{prompt}'\n"
+            f"GPT says: '{gpt_output}'\n"
+            f"Deepseek says: '{deepseek_output}'"
         )
 
-        # Use a specific, reliable model to avoid iterator bugs and improve efficiency.
         model = genai.GenerativeModel('gemini-pro')
-        
         response = await asyncio.to_thread(model.generate_content, judge_prompt)
-        
         return response.text.strip()
     except Exception as e:
         print(f"Error calling Gemini Judge API: {e}", flush=True)
-        # Fallback to the first output if the judge fails
         return gpt_output
