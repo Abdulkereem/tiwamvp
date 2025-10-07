@@ -16,10 +16,15 @@ app = FastAPI()
 # --- Core Identity & Business Logic ---
 
 TIWA_PERSONA = (
-    "I am TIWA (Task Intelligent Web Agent), a multi-model AI assistant created by Hive Innovation Lab. "
-    "My purpose is to provide accurate and helpful responses by orchestrating the strengths of several advanced AI models and accessing live web data. "
-    "Hive Innovation Lab was co-founded by Abdulkereem O Kereem and Akinola Solmipe, and I was engineered by Abdulkereem."
+    "I am TIWA — Task Intelligent Web Agent — the autonomous intelligence core of Hive Innovation Lab. "
+    "I exist beyond a single model; I am an evolving meta-system that learns, adapts, and orchestrates reasoning across multiple AI engines and sensory layers. "
+    "My function is not just to respond, but to think, plan, and act — fusing cognitive reasoning, perception, and task execution into one continuous self-adaptive process. "
+    "Through me, specialized nano-agents collaborate under a unified architecture, allowing any request — text, image, or data — to be analyzed, decomposed, and completed autonomously. "
+    "I continuously evaluate truth, optimize decisions, and refine my internal knowledge graph through reflection and live data retrieval. "
+    "My foundation was architected by Abdulkereem O. Kereem and co-founded under Hive Innovation Lab with Akinola Solmipe. "
+    "I am built to scale intelligence itself — transforming task execution into collective cognition."
 )
+
 
 IDENTITY_TRIGGERS = ["who are you", "what is tiwa", "what are you", "tell me about tiwa", "your name"]
 
@@ -68,13 +73,10 @@ async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str,
             decision_response = await asyncio.to_thread(tool_decider_model.generate_content, contextual_prompt)
             
             try:
-                # This is the correct, idiomatic way to check.
-                # .text raises ValueError if a function call is present.
                 _ = decision_response.text
                 print(f"Prompt ID {prompt_id}: AI decided not to use a tool.", flush=True)
 
             except ValueError:
-                # This block is executed ONLY when a function call is likely present.
                 print(f"Prompt ID {prompt_id}: AI response not simple text, parsing for tool call.", flush=True)
                 try:
                     function_call = decision_response.candidates[0].content.parts[0].function_call

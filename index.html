@@ -36,6 +36,33 @@
         .final-response ul, .final-response ol { padding-left: 20px; }
         .final-response blockquote { border-left: 4px solid #555; padding-left: 15px; margin-left: 0; color: #aaa; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Styles for Search Result Cards */
+        .search-results-container { margin-top: 10px; }
+        .search-result-card {
+            background-color: #333842;
+            border: 1px solid #4a4e5a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        .search-result-card h3 {
+            margin: 0 0 8px 0;
+        }
+        .search-result-card a {
+            color: #8ab4f8;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .search-result-card a:hover {
+            text-decoration: underline;
+        }
+        .search-result-card p {
+            margin: 5px 0 0 0;
+            color: #c0c5ce;
+            font-size: 0.9em;
+        }
+
     </style>
 </head>
 <body>
@@ -69,7 +96,6 @@
                 thinkingDiv.id = "thinking-" + data.prompt_id;
                 thinkingDiv.className = "thinking-message";
                 thinkingDiv.innerHTML = `<div class="loader"></div><div>Thinking about: <strong>${data.topic}</strong></div>`;
-                // Find the right user message container to append the thinking indicator
                 const container = document.querySelector(`[data-prompt-id="${data.prompt_id}"]`);
                 if (container) container.appendChild(thinkingDiv);
                 
@@ -79,7 +105,31 @@
 
                 const responseDiv = document.createElement("div");
                 responseDiv.className = "model-response final-response";
-                responseDiv.innerHTML = `<div><strong>TIWA:</strong></div>${marked.parse(data.final_source)}`;
+                responseDiv.innerHTML = `<div><strong>TIWA:</strong></div>`;
+
+                // Try to parse the source as JSON for search results
+                try {
+                    const results = JSON.parse(data.final_source);
+                    if (Array.isArray(results)) {
+                        const resultsContainer = document.createElement("div");
+                        resultsContainer.className = "search-results-container";
+                        results.forEach(res => {
+                            const card = document.createElement("div");
+                            card.className = "search-result-card";
+                            card.innerHTML = `
+                                <h3><a href="${res.url}" target="_blank">${res.title}</a></h3>
+                                <p>${res.content}</p>
+                            `;
+                            resultsContainer.appendChild(card);
+                        });
+                        responseDiv.appendChild(resultsContainer);
+                    } else {
+                       throw new Error("Parsed data is not an array");
+                    }
+                } catch (e) {
+                    // If it's not valid JSON, treat it as Markdown
+                    responseDiv.innerHTML += marked.parse(data.final_source);
+                }
                 
                 const container = document.querySelector(`[data-prompt-id="${data.prompt_id}"]`);
                 if (container) container.appendChild(responseDiv);
@@ -100,7 +150,6 @@
             if (prompt) {
                 const promptId = "prompt-" + Math.random().toString(36).substring(2, 9);
                 
-                // Create a container for the user message and future AI responses
                 const messageContainer = document.createElement("div");
                 messageContainer.className = "user-message-container";
                 messageContainer.dataset.promptId = promptId;

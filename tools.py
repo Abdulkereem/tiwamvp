@@ -1,5 +1,6 @@
 import os
 import httpx
+import json
 from bs4 import BeautifulSoup
 from tavily import TavilyClient
 
@@ -12,14 +13,14 @@ except KeyError:
     tavily_client = None
 
 async def tavily_web_search(query: str) -> str:
-    """Performs a web search using Tavily and returns the raw results."""
+    """Performs a web search using Tavily and returns the results as a JSON string."""
     if not tavily_client:
         return "Error: Tavily API key not configured."
     try:
         print(f"Performing Tavily search for: {query}", flush=True)
-        # Return the raw search results for the model to process
         response = tavily_client.search(query=query, search_depth="advanced")
-        return str(response["results"])
+        # Return the results as a valid JSON string for client-side parsing
+        return json.dumps(response["results"])
     except Exception as e:
         return f"Error during web search: {e}"
 
