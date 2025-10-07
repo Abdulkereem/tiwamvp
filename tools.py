@@ -19,40 +19,37 @@ async def tavily_web_search(query: str) -> str:
         print(f"Performing Tavily search for: {query}", flush=True)
         response = tavily_client.search(query=query, search_depth="advanced")
         # We will return a concise summary of the top 3 results
-        results = [f"- {res['title']}: {res['snippet']}" for res in response['results'][:3]]
+        results = [f"- {res['title']}: {res['content']}" for res in response['results'][:3]]
         summary = "\n".join(results)
         return f"Here are the top web search results for '{query}':\n{summary}"
     except Exception as e:
         return f"Error during web search: {e}"
 
 async def scrape_url(url: str) -> str:
-    """Fetches and extracts the main text content from a given URL."""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    """Fetches and scrapes the text content from a given URL."""
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
-            print(f"Scraping URL: {url}", flush=True)
-            response = await client.get(url, headers=headers)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, follow_redirects=True)
             response.raise_for_status() # Raise an exception for bad status codes
 
+        # Use BeautifulSoup to parse the HTML and extract text
         soup = BeautifulSoup(response.text, 'html.parser')
-        
+
         # Remove script and style elements
-        for script_or_style in soup(["script", "style"]):
+        for script_or_style in soup(['script', 'style']):
             script_or_style.decompose()
-        
+
         # Get text and clean it up
         text = soup.get_text()
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        cleaned_text = '\n'.join(chunk for chunk in chunks if chunk)
-        
-        # Limit the text to a reasonable length to not overwhelm the model
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+
+        # Limit the text to a reasonable length to avoid overwhelming the context
         max_length = 4000
-        return cleaned_text[:max_length] if len(cleaned_text) > max_length else cleaned_text
+        return text[:max_length] if len(text) > max_length else text
 
     except httpx.HTTPStatusError as e:
-        return f"Error fetching URL: {e.response.status_code} {e.response.reason_phrase}"
+        return f"Error fetching URL {url}: {e.response.status_code} {e.response.reason_phrase}"
     except Exception as e:
-        return f"An error occurred while scraping the URL: {e}"
+        return f"An error occurred while scraping {url}: {e}"
