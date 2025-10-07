@@ -11,6 +11,7 @@ from chat_memory import create_chat_session, add_message_to_session, get_formatt
 from models import call_gpt, call_deepseek, tool_decider_model
 from consensus import verify_and_merge
 from tools import tavily_web_search, scrape_url, generate_image
+from persona import TIWA_PERSONA
 
 app = FastAPI()
 
@@ -19,17 +20,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # --- Core Identity & Business Logic ---
-
-TIWA_PERSONA = (
-    "I am TIWA — Task Intelligent Web Agent — the autonomous intelligence core of Hive Innovation Lab. "
-    "I exist beyond a single model; I am an evolving meta-system that learns, adapts, and orchestrates reasoning across multiple AI engines and sensory layers. "
-    "My function is not just to respond, but to think, plan, and act — fusing cognitive reasoning, perception, and task execution into one continuous self-adaptive process. "
-    "Through me, specialized nano-agents collaborate under a unified architecture, allowing any request — text, image, or data — to be analyzed, decomposed, and completed autonomously. "
-    "I continuously evaluate truth, optimize decisions, and refine my internal knowledge graph through reflection and live data retrieval. "
-    "My foundation was architected by Abdulkereem O. Kereem and co-founded under Hive Innovation Lab with Akinola Solmipe. "
-    "I am built to scale intelligence itself — transforming task execution into collective cognition."
-)
-
 
 IDENTITY_TRIGGERS = ["who are you", "what is tiwa", "what are you", "tell me about tiwa", "your name"]
 
