@@ -63,14 +63,14 @@ scrape_url_tool = FunctionDeclaration(
 # 1. Tool Decider Model (Gemini)
 # This model's primary job is to decide if a tool should be used.
 tool_decider_model = genai.GenerativeModel(
-    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-001', # Using a pinned version
     tools=[tavily_web_search_tool, scrape_url_tool]
 ) if GEMINI_API_KEY else None
 
 
 # 2. Judge Model (Gemini)
 # This model arbitrates between other models in the consensus phase.
-judge_model = genai.GenerativeModel('gemini-1.5-flash-latest') if GEMINI_API_KEY else None
+judge_model = genai.GenerativeModel('gemini-1.5-flash-001') if GEMINI_API_KEY else None # Using a pinned version
 
 
 # --- TIWA Persona for Judge ---
