@@ -208,19 +208,29 @@ async def call_deepseek(prompt: str):
     except Exception as e:
         return f"Error calling Deepseek API: {e}"
 
-async def call_gemini_judge(gpt_output: str, deepseek_output: str, prompt: str) -> str:
-    """Uses Gemini to arbitrate between GPT and Deepseek outputs."""
+async def call_gemini_judge(candidate_outputs: list, evidence: list, prompt: str) -> str:
+    """Uses Gemini to arbitrate between multiple candidate outputs."""
     if not judge_model:
-        return "Gemini API key not set."
+        # Fallback to the first candidate if Gemini is not configured
+        return candidate_outputs[0] if candidate_outputs else ""
 
     try:
+        # Format the candidate outputs for the judge prompt
+        formatted_candidates = ""
+        for i, output in enumerate(candidate_outputs):
+            formatted_candidates += f"=== Candidate Output {i+1} ===\n{output}\n\n"
+
+        # Construct the full prompt for the judge
         judge_prompt_full = (
             f"{TIWA_JUDGE_PROMPT}\n\n"
             f"The user originally asked: '{prompt}'\n\n"
-            f"=== Model Output 1 (GPT) ===\n{gpt_output}\n\n"
-            f"=== Model Output 2 (Deepseek) ===\n{deepseek_output}"
+            # Optional: Add evidence if available
+            f"Evidence provided: {evidence}\n\n"
+            f"{formatted_candidates}"
         )
+
         response = await asyncio.to_thread(judge_model.generate_content, judge_prompt_full)
         return response.text.strip()
     except Exception as e:
-        return gpt_output # Fallback on error
+        # Fallback to the first candidate in case of an error
+        return candidate_outputs[0] if candidate_outputs else f"Error in Gemini Judge: {e}"
