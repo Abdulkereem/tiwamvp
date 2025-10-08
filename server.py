@@ -13,7 +13,8 @@ from typing import Dict, Optional
 from chat_memory import create_chat_session, add_message_to_session, get_formatted_history
 from models import call_gpt, call_deepseek, tool_decider_model
 from consensus import verify_and_merge
-from tools import tavily_web_search, scrape_url, generate_image, write_file
+from tools import tavily_web_search, scrape_url, generate_image, write_file, build_project, zip_directory
+from multimedia_tools import analyze_media, generate_video, generate_audio, combine_media
 from persona import TIWA_PERSONA
 
 app = FastAPI()
@@ -79,12 +80,18 @@ AVAILABLE_TOOLS = {
     "scrape_url": scrape_url,
     "generate_image": generate_image,
     "write_file": write_file,
+    "analyze_media": analyze_media, 
+    "generate_video": generate_video,
+    "generate_audio": generate_audio,
+    "combine_media": combine_media,
+    "build_project": build_project,
+    "zip_directory": zip_directory,
 }
 
 # --- Main Prompt Processing Logic ---
 
 async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str, prompt_id: str, file_path: Optional[str] = None):
-    """Handles prompts dynamically, including context from uploaded files."""
+    """Handles prompts dynamically, including context from uploaded files (text, audio, or video)."""
     try:
         if is_identity_question(prompt):
             # ... (identity logic remains the same)
@@ -95,26 +102,30 @@ async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str,
         await websocket.send_json({"type": "thinking", "topic": topic, "prompt_id": prompt_id})
 
         file_content_context = ""
+        MEDIA_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.wav', '.mp3', '.flac', '.aac'}
+        
         if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-                file_content_context = f"\n\n--- BEGIN UPLOADED FILE CONTENT ({os.path.basename(file_path)}) ---\n{file_content}\n--- END UPLOADED FILE CONTENT ---\n"
-            except Exception as e:
-                file_content_context = f"\n\n[System note: Could not read the uploaded file '{os.path.basename(file_path)}'. It might be a binary file.]\n"
+            _, ext = os.path.splitext(file_path)
+            if ext.lower() in MEDIA_EXTENSIONS:
+                # For media files, provide a system note to the AI to use the analysis tool.
+                file_content_context = f"\n\n[System note: A media file has been uploaded. Path: '{file_path}'. To understand its content, use the 'analyze_media' tool with this path.]\n"
+            else:
+                # For text-based files, read the content directly.
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        file_content = f.read()
+                    file_content_context = f"\n\n--- BEGIN UPLOADED FILE CONTENT ({os.path.basename(file_path)}) ---\n{file_content}\n--- END UPLOADED FILE CONTENT ---\n"
+                except Exception:
+                    file_content_context = f"\n\n[System note: Could not read the uploaded file '{os.path.basename(file_path)}'. It might be a binary file.]\n"
 
         history = get_formatted_history(chat_id)
         contextual_prompt = f"{history}{file_content_context}\nUser's current question: {prompt}"
-
-        # ... (rest of the tool decision and consensus logic remains the same)
-        # The 'contextual_prompt' now contains the file content if provided
 
         function_call = None
         tool_executed = False
 
         if tool_decider_model:
             decision_response = await asyncio.to_thread(tool_decider_model.generate_content, contextual_prompt)
-            
             try:
                 _ = decision_response.text
             except ValueError:
@@ -164,9 +175,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         while True:
             data = await websocket.receive_json()
             if data.get("action") == "message":
-                prompt = data.get("prompt")
-                prompt_id = data.get("prompt_id")
-                file_path = data.get("file_path") # Receive optional file path
+                prompt, prompt_id = data.get("prompt"), data.get("prompt_id")
+                file_path = data.get("file_path") 
                 if prompt and prompt_id:
                     asyncio.create_task(process_single_prompt(websocket, chat_id, prompt, prompt_id, file_path))
     except WebSocketDisconnect:

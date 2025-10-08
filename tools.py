@@ -7,11 +7,13 @@ import uuid
 from bs4 import BeautifulSoup
 from tavily import TavilyClient
 import openai
+import zipfile # For zipping directories
 
 # --- Directory Setup ---
 # Ensure directories for file operations exist.
 os.makedirs("generated_files", exist_ok=True)
 os.makedirs("static", exist_ok=True)
+os.makedirs("projects", exist_ok=True) # For storing generated projects
 
 
 # --- Security ---
@@ -111,3 +113,45 @@ async def write_file(filename: str, content: str) -> str:
 
     except Exception as e:
         return f"Error writing file: {e}"
+
+
+async def build_project(prompt: str) -> str:
+    """
+    Builds a complete software project based on a user's prompt.
+
+    This function will:
+    1. Decompose the prompt into a project structure (directories and files).
+    2. Generate the code for each file.
+    3. Create a logo for the project.
+    4. Zip the entire project directory.
+    5. Return a download link for the zip file.
+    """
+    # This is a placeholder for the full implementation. 
+    # In a real scenario, this function would involve complex logic 
+    # to parse the prompt, generate a project plan, and then execute it.
+    return "Project building functionality is under development."
+
+
+async def zip_directory(directory_path: str, output_zip_filename: str) -> str:
+    """
+    Zips a directory and returns a download link for the zip file.
+    """
+    sanitized_zip_filename = sanitize_filename(output_zip_filename)
+    if not sanitized_zip_filename:
+        return "Error: Output zip filename is invalid."
+    
+    output_zip_path = os.path.join("generated_files", sanitized_zip_filename)
+
+    try:
+        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(directory_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, start=directory_path)
+                    zipf.write(file_path, arcname)
+        
+        download_url = f"/downloads/{sanitized_zip_filename}"
+        return f"Directory zipped successfully. Download it here: {download_url}"
+
+    except Exception as e:
+        return f"Error zipping directory: {e}"
