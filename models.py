@@ -80,80 +80,66 @@ write_file_tool = FunctionDeclaration(
     }
 )
 
-analyze_media_tool = FunctionDeclaration(
-    name="analyze_media",
-    description="Analyzes a video or audio file from a local path. Use when a user uploads a media file and asks a question about it.",
+read_document_tool = FunctionDeclaration(
+    name="read_document",
+    description="Reads the text content of a document (like a PDF or TXT file). Use this when a user uploads a document and asks a question about it.",
     parameters={
         "type": "object",
         "properties": {
-            "file_path": {"type": "string", "description": "The local path to the media file."}
+            "file_path": {"type": "string", "description": "The local path to the document file."}
         },
         "required": ["file_path"]
     }
 )
 
-generate_video_tool = FunctionDeclaration(
-    name="generate_video",
-    description="Generates a short video clip from a text prompt. Use when the user asks to create or generate a video.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "prompt": {"type": "string", "description": "A detailed description of the video to generate."}
-        },
-        "required": ["prompt"]
-    }
-)
-
-generate_audio_tool = FunctionDeclaration(
-    name="generate_audio",
-    description="Generates an audio track (e.g., music or voiceover) from a text prompt. Use for requests to create a soundtrack, sound effect, or narration.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "prompt": {"type": "string", "description": "A description of the audio to generate."}
-        },
-        "required": ["prompt"]
-    }
-)
-
-combine_media_tool = FunctionDeclaration(
-    name="combine_media",
-    description="Combines a video file and an audio file into a single new video file. Use this as the final step when a user asks to add a soundtrack or voiceover to a video.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "video_path": {"type": "string", "description": "The path of the source video file (usually from a previous step)."},
-            "audio_path": {"type": "string", "description": "The path of the source audio file (usually from a previous step)."},
-            "output_filename": {"type": "string", "description": "The desired filename for the final combined video."}
-        },
-        "required": ["video_path", "audio_path", "output_filename"]
-    }
-)
-
 build_project_tool = FunctionDeclaration(
     name="build_project",
-    description="Builds a complete software project from a prompt. Use this for complex, multi-file tasks like creating a web app.",
+    description="Starts a new software project build from a prompt. This orchestrator decomposes the prompt into subtasks, creates a project, and returns a project_id.",
     parameters={
         "type": "object",
         "properties": {
-            "prompt": {"type": "string", "description": "The user's request for the project."}
+            "prompt": {"type": "string", "description": "The user's detailed request for the project."}
         },
         "required": ["prompt"]
     }
 )
 
-zip_directory_tool = FunctionDeclaration(
-    name="zip_directory",
-    description="Zips a directory and provides a download link.",
+execute_next_task_tool = FunctionDeclaration(
+    name="execute_next_task",
+    description="Executes the next pending subtask for a given project. When all tasks are complete, it will return a message indicating the project is ready for finalization.",
     parameters={
         "type": "object",
         "properties": {
-            "directory_path": {"type": "string", "description": "The path to the directory to be zipped."},
-            "output_zip_filename": {"type": "string", "description": "The desired name for the output zip file."}
+            "project_id": {"type": "string", "description": "The ID of the project to execute the next task for."}
         },
-        "required": ["directory_path", "output_zip_filename"]
+        "required": ["project_id"]
     }
 )
+
+get_task_status_tool = FunctionDeclaration(
+    name="get_task_status",
+    description="Gets the current status of a project build, including all subtasks and their states.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The ID of the project to get the status of."}
+        },
+        "required": ["project_id"]
+    }
+)
+
+finalize_project_tool = FunctionDeclaration(
+    name="finalize_project",
+    description="Zips the completed project directory and provides a final download link. This is the last step after all tasks are executed.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The ID of the project to finalize."}
+        },
+        "required": ["project_id"]
+    }
+)
+
 
 # --- AI Model Instances ---
 
@@ -165,12 +151,11 @@ tool_decider_model = genai.GenerativeModel(
         scrape_url_tool, 
         generate_image_tool, 
         write_file_tool, 
-        analyze_media_tool,
-        generate_video_tool,
-        generate_audio_tool,
-        combine_media_tool,
+        read_document_tool,
         build_project_tool,
-        zip_directory_tool,
+        execute_next_task_tool,
+        get_task_status_tool,
+        finalize_project_tool
     ]
 ) if GEMINI_API_KEY else None
 

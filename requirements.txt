@@ -6,3 +6,4 @@ google-generativeai
 tavily-python
 beautifulsoup4
 replicate
+pypdf

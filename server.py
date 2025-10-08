@@ -13,7 +13,18 @@ from typing import Dict, Optional
 from chat_memory import create_chat_session, add_message_to_session, get_formatted_history
 from models import call_gpt, call_deepseek, tool_decider_model
 from consensus import verify_and_merge
-from tools import tavily_web_search, scrape_url, generate_image, write_file, build_project, zip_directory
+from tools import (
+    tavily_web_search, 
+    scrape_url, 
+    generate_image, 
+    write_file, 
+    build_project, 
+    zip_directory, 
+    read_document,
+    execute_next_task, # New import
+    get_task_status,   # New import
+    finalize_project   # New import
+)
 from multimedia_tools import analyze_media, generate_video, generate_audio, combine_media
 from persona import TIWA_PERSONA
 
@@ -86,6 +97,11 @@ AVAILABLE_TOOLS = {
     "combine_media": combine_media,
     "build_project": build_project,
     "zip_directory": zip_directory,
+    "read_document": read_document,
+    # New project management tools
+    "execute_next_task": execute_next_task,
+    "get_task_status": get_task_status,
+    "finalize_project": finalize_project,
 }
 
 # --- Main Prompt Processing Logic ---
@@ -110,13 +126,8 @@ async def process_single_prompt(websocket: WebSocket, chat_id: str, prompt: str,
                 # For media files, provide a system note to the AI to use the analysis tool.
                 file_content_context = f"\n\n[System note: A media file has been uploaded. Path: '{file_path}'. To understand its content, use the 'analyze_media' tool with this path.]\n"
             else:
-                # For text-based files, read the content directly.
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        file_content = f.read()
-                    file_content_context = f"\n\n--- BEGIN UPLOADED FILE CONTENT ({os.path.basename(file_path)}) ---\n{file_content}\n--- END UPLOADED FILE CONTENT ---\n"
-                except Exception:
-                    file_content_context = f"\n\n[System note: Could not read the uploaded file '{os.path.basename(file_path)}'. It might be a binary file.]\n"
+                # For text-based files, provide a system note to the AI to use the analysis tool.
+                file_content_context = f"\n\n[System note: A document has been uploaded. Path: '{file_path}'. To understand its content, use the 'read_document' tool with this path.]\n"
 
         history = get_formatted_history(chat_id)
         contextual_prompt = f"{history}{file_content_context}\nUser's current question: {prompt}"
