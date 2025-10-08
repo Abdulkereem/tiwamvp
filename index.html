@@ -20,15 +20,21 @@
         #messages { margin-bottom: 20px; max-height: 70vh; overflow-y: auto; }
         .message, .user-message-container { margin-bottom: 15px; }
         .user-message { text-align: right; color: #7aa2f7; font-weight: 500; margin-bottom: 5px; }
+        .user-message small { color: #aaa; font-style: italic; }
         .model-response, .thinking-message { margin-top: 10px; padding: 15px; border: 1px solid #333; border-radius: 8px; line-height: 1.6; }
         .final-response { background-color: #2a2d3d; border-color: #444; }
         .thinking-message { background-color: #333; color: #aaa; display: flex; align-items: center; }
         #prompt-input { flex-grow: 1; padding: 12px; border: 1px solid #444; border-radius: 5px; background-color: #333; color: #e0e0e0; font-size: 1em; }
-        #prompt-container { display: flex; gap: 10px; }
+        #prompt-container { display: flex; gap: 10px; align-items: center; }
         button { padding: 12px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
         button:hover { background-color: #0056b3; }
         .loader { border: 4px solid #555; border-top: 4px solid #00aaff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin-right: 12px; }
 
+        #attach-button { background: none; border: none; font-size: 1.5em; color: #aaa; cursor: pointer; padding: 0 10px; }
+        #attach-button:hover { color: #00aaff; }
+        #file-display-container { display: none; align-items: center; gap: 10px; margin-top: 10px; font-size: 0.9em; color: #ccc; background-color: #2a2d3d; padding: 8px 12px; border-radius: 5px; }
+        #clear-file-button { background: none; border: none; font-size: 1.2em; color: #ff4d4d; cursor: pointer; padding: 0; }
+        
         .final-response h1, .final-response h2, .final-response h3 { color: #00aaff; border-bottom: 1px solid #444; padding-bottom: 5px; }
         .final-response p { margin: 10px 0; }
         .final-response code:not(.hljs) { background-color: #333; padding: 2px 5px; border-radius: 4px; font-family: "Fira Code", monospace; }
@@ -37,26 +43,15 @@
         .final-response blockquote { border-left: 4px solid #555; padding-left: 15px; margin-left: 0; color: #aaa; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Styles for Search Result Cards */
+        /* Search Result & Image Styles */
         .search-results-container { margin-top: 10px; }
-        .search-result-card {
-            background-color: #333842;
-            border: 1px solid #4a4e5a;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-        }
+        .search-result-card { background-color: #333842; border: 1px solid #4a4e5a; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
         .search-result-card h3 { margin: 0 0 8px 0; }
         .search-result-card a { color: #8ab4f8; text-decoration: none; font-weight: 500; }
         .search-result-card a:hover { text-decoration: underline; }
         .search-result-card p { margin: 5px 0 0 0; color: #c0c5ce; font-size: 0.9em; }
-
-        /* Style for Generated Images */
-        .generated-image {
-            max-width: 100%;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
+        .generated-image { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+        .download-button { display: inline-block; padding: 10px 15px; background-color: #007bff; color: white !important; text-decoration: none; border-radius: 5px; margin-top: 10px; }
 
     </style>
 </head>
@@ -64,7 +59,16 @@
     <h1>TIWA Conversation Engine</h1>
     <div id="chat">
         <div id="messages"></div>
+        
+        <div id="file-display-container">
+            <span>Attached:</span>
+            <span id="file-name"></span>
+            <button id="clear-file-button" onclick="clearFile()">✖</button>
+        </div>
+
         <div id="prompt-container">
+            <input type="file" id="file-input" style="display: none;" onchange="updateFileName()">
+            <button id="attach-button" title="Attach File" onclick="document.getElementById('file-input').click()">📎</button>
             <input type="text" id="prompt-input" placeholder="Ask TIWA..." onkeypress="handleKeyPress(event)">
             <button onclick="sendMessage()">Send</button>
         </div>
@@ -73,8 +77,12 @@
     <script>
         const clientId = "web-client-" + Math.random().toString(36).substring(2, 9);
         const websocket = new WebSocket(`ws://${window.location.host}/ws/${clientId}`);
+        
         const messagesDiv = document.getElementById("messages");
         const input = document.getElementById("prompt-input");
+        const fileInput = document.getElementById("file-input");
+        const fileNameSpan = document.getElementById("file-name");
+        const fileDisplayContainer = document.getElementById("file-display-container");
 
         marked.setOptions({
           highlight: (code, lang) => hljs.highlight(code, { language: hljs.getLanguage(lang) ? lang : 'plaintext' }).value,
@@ -103,15 +111,24 @@
                 responseDiv.innerHTML = `<div><strong>TIWA:</strong></div>`;
 
                 const source = data.final_source;
+                let contentAdded = false;
 
+                // Check for a downloadable file link
+                if (typeof source === 'string' && source.startsWith('/downloads/')) {
+                    const filename = source.split('/').pop();
+                    responseDiv.innerHTML += `<a href="${source}" class="download-button" download="${filename}">Download ${filename}</a>`;
+                    contentAdded = true;
+                }
                 // Check if the source is an image path
-                if (source.startsWith('/') && source.endsWith('.png')) {
+                else if (typeof source === 'string' && source.startsWith('/') && source.endsWith('.png')) {
                     const imageElement = document.createElement("img");
                     imageElement.src = source;
                     imageElement.className = "generated-image";
                     responseDiv.appendChild(imageElement);
-                } else {
-                    // Try to parse the source as JSON for search results
+                    contentAdded = true;
+                } 
+                // Try to parse for search results
+                if (!contentAdded) {
                     try {
                         const results = JSON.parse(source);
                         if (Array.isArray(results)) {
@@ -120,20 +137,17 @@
                             results.forEach(res => {
                                 const card = document.createElement("div");
                                 card.className = "search-result-card";
-                                card.innerHTML = `
-                                    <h3><a href="${res.url}" target="_blank">${res.title}</a></h3>
-                                    <p>${res.content}</p>
-                                `;
+                                card.innerHTML = `<h3><a href="${res.url}" target="_blank">${res.title}</a></h3><p>${res.content}</p>`;
                                 resultsContainer.appendChild(card);
                             });
                             responseDiv.appendChild(resultsContainer);
-                        } else {
-                           throw new Error("Parsed data is not an array");
+                            contentAdded = true;
                         }
-                    } catch (e) {
-                        // If it's not JSON or an image, treat it as Markdown
-                        responseDiv.innerHTML += marked.parse(source);
-                    }
+                    } catch (e) { /* Not JSON, proceed to markdown */ }
+                }
+                // Fallback to Markdown
+                if (!contentAdded) {
+                    responseDiv.innerHTML += marked.parse(String(source));
                 }
                 
                 const container = document.querySelector(`[data-prompt-id="${data.prompt_id}"]`);
@@ -144,31 +158,73 @@
                 if (thinkingDiv) {
                     thinkingDiv.innerHTML = `<div><strong>Error:</strong> ${data.message}</div>`;
                     thinkingDiv.classList.remove("thinking-message");
-                    thinkingDiv.classList.add("error-message");
                 }
             }
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         };
 
-        function sendMessage() {
+        async function sendMessage() {
             const prompt = input.value.trim();
-            if (prompt) {
-                const promptId = "prompt-" + Math.random().toString(36).substring(2, 9);
-                
-                const messageContainer = document.createElement("div");
-                messageContainer.className = "user-message-container";
-                messageContainer.dataset.promptId = promptId;
-                
-                const userMessageDiv = document.createElement("div");
-                userMessageDiv.className = "message user-message";
-                userMessageDiv.innerText = prompt;
-                messageContainer.appendChild(userMessageDiv);
-                messagesDiv.appendChild(messageContainer);
+            const file = fileInput.files[0];
+            
+            if (!prompt && !file) return; // Do not send empty messages
 
-                websocket.send(JSON.stringify({ action: "message", prompt, prompt_id: promptId }));
-                input.value = "";
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            const promptId = "prompt-" + Math.random().toString(36).substring(2, 9);
+            const messageContainer = document.createElement("div");
+            messageContainer.className = "user-message-container";
+            messageContainer.dataset.promptId = promptId;
+            
+            const userMessageDiv = document.createElement("div");
+            userMessageDiv.className = "message user-message";
+            userMessageDiv.innerHTML = prompt + (file ? `<br><small>(Attached: ${file.name})</small>` : '');
+            messageContainer.appendChild(userMessageDiv);
+            messagesDiv.appendChild(messageContainer);
+
+            let filePath = null;
+            if (file) {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                try {
+                    const response = await fetch('/uploadfile/', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.message);
+                    filePath = result.file_info.path;
+                } catch (error) {
+                    console.error("File upload failed:", error.message);
+                    // Display error in UI
+                    const errorDiv = document.createElement("div");
+                    errorDiv.className = "model-response final-response";
+                    errorDiv.innerHTML = `<strong>Error:</strong> File upload failed: ${error.message}`;
+                    messageContainer.appendChild(errorDiv);
+                    return;
+                }
             }
+
+            websocket.send(JSON.stringify({
+                action: "message",
+                prompt: prompt || "Analyze the attached file.",
+                prompt_id: promptId,
+                file_path: filePath
+            }));
+            
+            input.value = "";
+            clearFile();
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateFileName() {
+            if (fileInput.files.length > 0) {
+                fileNameSpan.textContent = fileInput.files[0].name;
+                fileDisplayContainer.style.display = 'flex';
+            } else {
+                fileDisplayContainer.style.display = 'none';
+            }
+        }
+
+        function clearFile() {
+            fileInput.value = '';
+            updateFileName();
         }
 
         function handleKeyPress(event) {

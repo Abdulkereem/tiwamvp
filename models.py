@@ -76,6 +76,25 @@ generate_image_tool = FunctionDeclaration(
     }
 )
 
+write_file_tool = FunctionDeclaration(
+    name="write_file",
+    description="Writes content to a sanitized file in the 'generated_files' directory and returns a download link. Use this to create and save code, text, or any other file format when the user asks to write, save, or create a file.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "filename": {
+                "type": "string",
+                "description": "The name of the file to create, including the extension (e.g., 'my_script.py')."
+            },
+            "content": {
+                "type": "string",
+                "description": "The content to write into the file."
+            }
+        },
+        "required": ["filename", "content"]
+    }
+)
+
 
 # --- AI Model Instances ---
 
@@ -83,7 +102,7 @@ generate_image_tool = FunctionDeclaration(
 # This model's primary job is to decide if a tool should be used.
 tool_decider_model = genai.GenerativeModel(
     'gemini-flash-latest',
-    tools=[tavily_web_search_tool, scrape_url_tool, generate_image_tool]
+    tools=[tavily_web_search_tool, scrape_url_tool, generate_image_tool, write_file_tool]
 ) if GEMINI_API_KEY else None
 
 
